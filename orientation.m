@@ -93,8 +93,8 @@ Corr_time_gyro = 0.01;
 Corr_time_acc = 0.01;
 Corr_time_mag = 0.1;
 sigma_Win = 1.0e-6;
-sigma_gyro_1 = (2*pi/180/3600)^2   % Markov process
-sigma_gyro_2 = (1*pi/180/3600)^2   % Random walk
+sigma_gyro_1 = (2*pi/180/3600)^2;   % Markov process
+sigma_gyro_2 = (1*pi/180/3600)^2;   % Random walk
 sigma_acc = ((5.0e-2)*Ge)^2;  % Markov process
 sigma_mag = 0.1*0.1;  % Markov process
 
