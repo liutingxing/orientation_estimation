@@ -23,7 +23,7 @@ AlignmentTime = 2;  % second
 
 %% mag calibration 
 
-% (mag_calibrated = inv(W)*(mag_raw - V)
+% mag_calibrated = inv(W)*(mag_raw - V)
 [Cali_B, Cali_V, Cali_W_inv, Cali_Error] = cali7eig(Mag);
 % calibrated mag data
 Mag_c = zeros(M, 3);
@@ -217,8 +217,8 @@ for i = N+1 : M
     x = x + K*(Z - H*x);
     P = (I - K*H)*P;
     
-    [deltCbn] = euler2dcm (x(3), x(2), x(1)); % (I+P)Cbn
-    Cbn = deltCbn*Cbn;
+    [deltaCbn] = euler2dcm (x(3), x(2), x(1)); % (I+P)Cbn
+    Cbn = deltaCbn*Cbn;
     [yaw(i), pitch(i), roll(i)] = dcm2euler(Cbn);   % gyro + acc estimation
     q = euler2q(yaw(i), pitch(i), roll(i));
     q = q_norm(q);
@@ -256,8 +256,8 @@ for i = N+1 : M
         disp('mag jamming exist at %d', Time(i));
     else
         P = (I - K*H)*P;
-        [deltCbn] = euler2dcm (x(3), x(2), x(1)); % (I+P)Cbn
-        Cbn = deltCbn*Cbn;
+        [deltaCbn] = euler2dcm (x(3), x(2), x(1)); % (I+P)Cbn
+        Cbn = deltaCbn*Cbn;
         [yaw(i), pitch(i), roll(i)] = dcm2euler(Cbn);   % gyro + acc + mag estimation
         q = euler2q(yaw(i), pitch(i), roll(i));
         q = q_norm(q);
