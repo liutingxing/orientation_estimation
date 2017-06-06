@@ -8,7 +8,7 @@ addpath('.\functions\mag_calibration');
 % format:
 % type: GNSS(0)   TimeTag(ms) Latitude(rad) Longitude(rad) Altitude(m) VelocityE(m/s2) VelocityN(m/s2) VelocityU(m/s2) Heading(rad)
 % type: SENSOR(1) TimeTag(ms) AccX(m/s2) AccY(m/s2) AccZ(m/s2) GyroX(rad) GyroY(rad) GyroZ(rad) MagX(uT) MagY(uT) MagZ(uT) 
-data = load('.\data\2017_4_28_1.log');
+data = load('.\data\2017_4_24_test_ZTE_halfcirlce.log');
 GNSS = 0;
 SENSOR = 1;
 
@@ -326,6 +326,12 @@ for i = 1:length(data)
             x(1:StateNum) = 0;
             
             sensor_heading_9D(gnss_count) = yaw;
+        else
+            if gnss_count ~= 1
+                % lost sensor data
+                sensor_heading_9D(gnss_count) = sensor_heading_9D(gnss_count - 1);
+                sensor_heading_6D(gnss_count) = sensor_heading_6D(gnss_count - 1);
+            end
         end
         gnss_count = gnss_count + 1;
         sensor_count = 0;
