@@ -8,7 +8,7 @@ addpath('.\functions\mag_calibration');
 % format:
 % type: GNSS(0)   TimeTag(ms) Latitude(rad) Longitude(rad) Altitude(m) VelocityE(m/s2) VelocityN(m/s2) VelocityU(m/s2) Heading(rad)
 % type: SENSOR(1) TimeTag(ms) AccX(m/s2) AccY(m/s2) AccZ(m/s2) GyroX(rad) GyroY(rad) GyroZ(rad) MagX(uT) MagY(uT) MagZ(uT) 
-data = load('.\data\2017_4_24_test_ZTE_halfcirlce.log');
+data = load('.\data\2017_4_28_1.log');
 GNSS = 0;
 SENSOR = 1;
 
@@ -16,7 +16,7 @@ SENSOR = 1;
 %% configure
 
 SampleRate = 50;   % Hz
-AlignmentTime = 2;  % second
+AlignmentTime = 2; % second
 
 %% prepare data for mag calibration & initial alignment
 count = 1;
@@ -143,7 +143,6 @@ P(12, 12) = error_mag_jamming^2;
 %% main loop start
 gnss_count = 1;
 sensor_count = 0;
-q = euler2q(yaw_initial, pitch_initial, roll_initial);
 
 for i = 1:length(data)
     type = data(i, 1);
@@ -152,8 +151,13 @@ for i = 1:length(data)
     if type == GNSS
         gnss_heading(gnss_count) = data(i, 9);
         if gnss_count == 1
-            sensor_heading_9D(gnss_count) = yaw_initial;
-            sensor_heading_6D(gnss_count) = yaw_initial;
+            q = euler2q(yaw_initial, pitch_initial, roll_initial);
+            qlpf = q;
+            qlpf_6D = q;
+            sensor_heading_9D(1) = yaw_initial;
+            sensor_heading_6D(1) = yaw_initial;
+            mag_inclination(1) = geo_inclination;
+            mag_inclination_lpf = geo_inclination;
         end
         if sensor_count > 0
             % sensor fusion
@@ -162,11 +166,30 @@ for i = 1:length(data)
             Acc = mean(acc_array);
             Mag = mean(mag_array);
             
-            % mag + acc heading estimation
+            %% mag + acc heading estimation
             Cnb_6D = ecompass_ned(-Acc, Mag);
             Cbn_6D = Cnb_6D';
+            [yaw_6D, pitch_6D, roll_6D] = dcm2euler(Cbn_6D);
+            q_6D = euler2q(yaw_6D, pitch_6D, roll_6D);
+            q_6D = q_norm(q_6D);
+            % low pass filter for quaternion
+            % set low pass filter constant with maximum value 1.0 (all pass) decreasing to 0.0 (increasing low pass)
+            lpf_time = 1;   % time constant (second)
+            flpf = dt/lpf_time;
+            deltaq = qconjgAxB(qlpf_6D, q_6D);
+            if deltaq(1) < 0
+                deltaq = -deltaq;
+            end
+            ftemp = flpf + (1-flpf)*(1-deltaq(1));
+            deltaq = ftemp*deltaq;
+            deltaq(1) = sqrt(1 - norm(deltaq(2:4))^2);
+            qlpf_6D = qAxB(qlpf_6D, deltaq);
+            qlpf_6D = q_norm(qlpf_6D);
+            % convert to euler
+            Cbn_6D = q2dcm(qlpf_6D);
             [sensor_heading_6D(gnss_count), ~, ~] = dcm2euler(Cbn_6D);
             
+            %% gyro + acc + mag heading estimation 
             % strapdown mechanization
             Cbn = q2dcm(q);
             Cnb = Cbn';
@@ -308,6 +331,14 @@ for i = 1:length(data)
                     cosdelta = COSDELTAMAX;
                 end
                 geo_inclination = asin(sindelta);
+                % low pass filter for quaternion
+                if 1
+                    lpf_time = 1;   % time constant (second)
+                    flpf = dt/lpf_time;
+                    mag_inclination_lpf = mag_inclination_lpf + flpf * (geo_inclination - mag_inclination_lpf);
+                    geo_inclination = mag_inclination_lpf;
+                end
+                mag_inclination(gnss_count) = geo_inclination;
                 if mag_calibration == 0
                     Cali_B = geoB_temp;
                 end
@@ -325,14 +356,37 @@ for i = 1:length(data)
             gyro_bias = gyro_bias + x(4:6);
             x(1:StateNum) = 0;
             
+            % low pass filter for quaternion
+            % set low pass filter constant with maximum value 1.0 (all pass) decreasing to 0.0 (increasing low pass)
+            if 1
+            lpf_time = 0.1;   % time constant (second)
+            flpf = dt/lpf_time;
+            deltaq = qconjgAxB(qlpf, q);
+            if deltaq(1) < 0
+                deltaq = -deltaq;
+            end
+            ftemp = flpf + (1-flpf)*(1-deltaq(1));
+            deltaq = ftemp*deltaq;
+            deltaq(1) = sqrt(1 - norm(deltaq(2:4))^2);
+            qlpf = qAxB(qlpf, deltaq);
+            qlpf = q_norm(qlpf);
+            q = qlpf;
+            % convert to euler
+            Cbn = q2dcm(q);
+            [yaw, pitch, roll] = dcm2euler(Cbn);
+            end
+            
+            % restore the heading result
             sensor_heading_9D(gnss_count) = yaw;
         else
             if gnss_count ~= 1
                 % lost sensor data
                 sensor_heading_9D(gnss_count) = sensor_heading_9D(gnss_count - 1);
                 sensor_heading_6D(gnss_count) = sensor_heading_6D(gnss_count - 1);
+                mag_inclination(gnss_count) = mag_inclination(gnss_count - 1);
             end
         end
+        
         gnss_count = gnss_count + 1;
         sensor_count = 0;
     % SENSOR    
@@ -355,7 +409,15 @@ hold on;
 plot(sensor_heading_9D*180/pi, 'g');
 plot(sensor_heading_6D*180/pi, 'b');
 legend('gnss heading', '9D heaing', '6D heading');
+ylabel('angle(degree)');
+xlabel('time(second)');
 title(['heading comparison, 9D heading std = ', num2str(std(sensor_heading_9D*180/pi)),'deg, ', '6D heading std = ', num2str(std(sensor_heading_6D*180/pi)),'deg']);
+
+figure;
+plot(mag_inclination*180/pi);
+ylabel('angle(degree)');
+xlabel('time(second)');
+title(['geo inclination, std = ', num2str(std(mag_inclination*180/pi)),'deg']);
 
 
 
