@@ -175,7 +175,7 @@ for i = 1:length(data)
             % low pass filter for quaternion
             % set low pass filter constant with maximum value 1.0 (all pass) decreasing to 0.0 (increasing low pass)
             lpf_time = 1;   % time constant (second)
-            flpf = dt/lpf_time;
+            flpf = dt*sensor_count/lpf_time;
             deltaq = qconjgAxB(qlpf_6D, q_6D);
             if deltaq(1) < 0
                 deltaq = -deltaq;
@@ -334,7 +334,7 @@ for i = 1:length(data)
                 % low pass filter for quaternion
                 if 1
                     lpf_time = 1;   % time constant (second)
-                    flpf = dt/lpf_time;
+                    flpf = dt*sensor_count/lpf_time;
                     mag_inclination_lpf = mag_inclination_lpf + flpf * (geo_inclination - mag_inclination_lpf);
                     geo_inclination = mag_inclination_lpf;
                 end
@@ -359,8 +359,8 @@ for i = 1:length(data)
             % low pass filter for quaternion
             % set low pass filter constant with maximum value 1.0 (all pass) decreasing to 0.0 (increasing low pass)
             if 1
-            lpf_time = 0.1;   % time constant (second)
-            flpf = dt/lpf_time;
+            lpf_time = 10;   % time constant (second)
+            flpf = dt*sensor_count/lpf_time;
             deltaq = qconjgAxB(qlpf, q);
             if deltaq(1) < 0
                 deltaq = -deltaq;
