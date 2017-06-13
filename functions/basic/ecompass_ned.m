@@ -1,4 +1,4 @@
-function [Cbn] = ecompass_ned(g, mag)
+function [Cnb] = ecompass_ned(g, mag)
 
 vz = g';
 vx = mag';
@@ -9,4 +9,4 @@ vx = vx/norm(vx);
 vy = vy/norm(vy);
 vz = vz/norm(vz);
 
-Cbn = [vx, vy, vz];
+Cnb = [vx, vy, vz];

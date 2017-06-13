@@ -8,7 +8,7 @@ addpath('.\functions\mag_calibration');
 % format:
 % type: GNSS(0)   TimeTag(ms) Latitude(rad) Longitude(rad) Altitude(m) VelocityE(m/s2) VelocityN(m/s2) VelocityU(m/s2) Heading(rad)
 % type: SENSOR(1) TimeTag(ms) AccX(m/s2) AccY(m/s2) AccZ(m/s2) GyroX(rad) GyroY(rad) GyroZ(rad) MagX(uT) MagY(uT) MagZ(uT) 
-data = load('.\data\2017_4_28_1.log');
+data = load('.\data\pdr_data.log');
 GNSS = 0;
 SENSOR = 1;
 
@@ -17,6 +17,7 @@ SENSOR = 1;
 
 SampleRate = 50;   % Hz
 AlignmentTime = 2; % second
+MagCalibrationTime = 5;   % second
 
 %% prepare data for mag calibration & initial alignment
 count = 1;
@@ -31,16 +32,10 @@ for i = 1:length(data)
 end
 
 % mag_calibrated = inv(W)*(mag_raw - V)
-[Cali_B, Cali_V, Cali_W_inv, Cali_Error] = cali7eig(Mag);
+N = SampleRate*MagCalibrationTime;
+[Cali_B, Cali_V, Cali_W_inv, Cali_Error] = cali7eig(Mag(1:N, :));
 if Cali_Error < 0.1
     mag_calibration = 1;
-    % calibrated mag data
-    Mag_c = zeros(M, 3);
-    for i = 1:M
-        Bp = Mag(i, :);
-        Bc = Cali_W_inv*(Bp - Cali_V)';
-        Mag_c(i, :) = Bc;
-    end
 else
     mag_calibration = 0;
     disp('mag calibration can not be execuated');
@@ -53,10 +48,28 @@ AlignmentTime = 2;  % second
 
 %% initial alignment
 
+% find the first position fix index
+count = 1;
+for i = 1:length(data)
+    type = data(i, 1);
+    if type == SENSOR
+        count = count + 1;
+    else
+        break;
+    end
+end
+M = count;
 N = SampleRate*AlignmentTime;
 initial_alignment_flag = 0;
-acc_alignment = Acc(1:N, :);
-mag_alignment = Mag(1:N, :);
+acc_alignment = Acc(M:M+N, :);
+mag_alignment = Mag(M:M+N, :);
+
+% calibrated mag data
+for i = 1 : length(mag_alignment)
+    Bp = mag_alignment(i, :);
+    Bc = Cali_W_inv*(Bp - Cali_V)';
+    mag_alignment(i, :) = Bc';
+end
 
 % static check
 acc_x_var = var(acc_alignment(1:N, 1));
@@ -144,7 +157,7 @@ P(12, 12) = error_mag_jamming^2;
 gnss_count = 1;
 sensor_count = 0;
 
-for i = 1:length(data)
+for i = M:length(data)
     type = data(i, 1);
     time_tag = data(i, 2);
     % GNSS
@@ -166,7 +179,7 @@ for i = 1:length(data)
             Acc = mean(acc_array);
             Mag = mean(mag_array);
             
-            %% mag + acc heading estimation
+           %% mag + acc heading estimation
             Cnb_6D = ecompass_ned(-Acc, Mag);
             Cbn_6D = Cnb_6D';
             [yaw_6D, pitch_6D, roll_6D] = dcm2euler(Cbn_6D);
@@ -189,7 +202,7 @@ for i = 1:length(data)
             Cbn_6D = q2dcm(qlpf_6D);
             [sensor_heading_6D(gnss_count), ~, ~] = dcm2euler(Cbn_6D);
             
-            %% gyro + acc + mag heading estimation 
+           %% gyro + acc + mag heading estimation 
             % strapdown mechanization
             Cbn = q2dcm(q);
             Cnb = Cbn';
@@ -396,6 +409,8 @@ for i = 1:length(data)
         Mag = data(i, 9:11);
         Acc = data(i, 3:5);
         Gyro = data(i, 6:8);
+        % calibrated mag data
+        Mag = Cali_W_inv*(Mag - Cali_V)';
         mag_array(sensor_count, :) = Mag;
         acc_array(sensor_count, :) = Acc;
         gyro_array(sensor_count, :) = Gyro;
