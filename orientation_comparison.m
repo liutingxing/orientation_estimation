@@ -135,9 +135,9 @@ StateNum = 12;
 MeasNumG = 3;
 MeasNumM = 3;
 x = zeros(StateNum, 1); % roll, pitch, yaw, gyro_bias_x, gyro_bias_y, gyro_bias_z, acc_bias_x, acc_bias_y, acc_bias_z, mag_jamming_x, mag_jamming_y, mag_jamming_z
-Corr_time_gyro = 0.01;
-Corr_time_acc = 0.01;
-Corr_time_mag = 0.1;
+Corr_time_gyro = 1;
+Corr_time_acc = 1;
+Corr_time_mag = 10;
 sigma_Win = 1.0e-6;
 sigma_gyro_1 = (2*pi/180/3600)^2;   % Markov process
 sigma_gyro_2 = (1*pi/180/3600)^2;   % Random walk
@@ -185,7 +185,7 @@ for i = M:length(data)
         end
         if sensor_count > 0
             % sensor fusion
-            dt = 1/SampleRate;
+            dt = 1/SampleRate*sensor_count;
             Acc = mean(acc_array);
             Mag = mean(mag_array);
             
@@ -264,9 +264,9 @@ for i = M:length(data)
             H(3, 9) = Cbn(3, 3);
 
             R = eye(MeasNumG, MeasNumG);
-            R(1, 1) = 2^2;
-            R(2, 2) = 2^2;
-            R(3, 3) = 2^2;
+            R(1, 1) = 5^2;
+            R(2, 2) = 5^2;
+            R(3, 3) = 5^2;
 
             acc_liner_b = zeros(3, 1);
             g_estimate = Cbn*(acc_bias - Acc' + acc_liner_b);
@@ -308,7 +308,7 @@ for i = M:length(data)
             % mag jamming check
             mag_jamming_b = x(10:12);
             if norm(mag_jamming_b) > 2*Cali_B^2
-                disp('mag jamming exist at %d', time_tag);
+                disp('mag jamming occur');
             else
                 P = (I - K*H)*P;
                 [deltaCbn] = euler2dcm (x(3), x(2), x(1)); % (I+P)Cbn
@@ -332,8 +332,8 @@ for i = M:length(data)
                 geo_inclination = asin(sindelta);
                 % low pass filter
                 if 1
-                    lpf_time = 2;   % time constant (second)
-                    flpf = dt*sensor_count/lpf_time;
+                    lpf_time = 5;   % time constant (second)
+                    flpf = dt/lpf_time;
                     mag_inclination_lpf = mag_inclination_lpf + flpf * (geo_inclination - mag_inclination_lpf);
                     geo_inclination = mag_inclination_lpf;
                 end
@@ -354,6 +354,26 @@ for i = M:length(data)
             acc_bias = acc_bias + x(7:9);
             gyro_bias = gyro_bias + x(4:6);
             x(1:StateNum) = 0;
+            end
+            
+            if 0
+            % low pass filter for quaternion
+            % set low pass filter constant with maximum value 1.0 (all pass) decreasing to 0.0 (increasing low pass)
+            lpf_time = 1;   % time constant (second)
+            flpf = dt/lpf_time;
+            deltaq = qconjgAxB(qlpf, q);
+            if deltaq(1) < 0
+                deltaq = -deltaq;
+            end
+            ftemp = flpf + (1-flpf)*(1-deltaq(1));
+            deltaq = ftemp*deltaq;
+            deltaq(1) = sqrt(1 - norm(deltaq(2:4))^2);
+            qlpf = qAxB(qlpf, deltaq);
+            qlpf = q_norm(qlpf);
+            % convert to euler
+            Cbn = q2dcm(qlpf);
+            [yaw, ~, ~] = dcm2euler(Cbn);
+            q = qlpf;
             end
             
             % restore the heading result
