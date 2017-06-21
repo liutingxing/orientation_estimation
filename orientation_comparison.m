@@ -17,7 +17,7 @@ SENSOR = 1;
 
 SampleRate = 50;   % Hz
 AlignmentTime = 2; % second
-MagCalibrationTime = 5;   % second
+MagCalibrationTime = 10;   % second
 
 %% prepare data for mag calibration & initial alignment
 count = 1;
@@ -29,6 +29,17 @@ for i = 1:length(data)
         Gyro(count, :) = data(i, 6:8);
         count = count + 1;
     end
+end
+
+% disp gyro data
+if 0
+    figure;
+    plot(Gyro(:, 1), 'r');
+%     hold on;
+%     plot(Gyro(:, 2), 'g');
+%     plot(Gyro(:, 3), 'b');
+    legend('X', 'Y', 'Z');
+    title('gyro data');
 end
 
 % mag_calibrated = inv(W)*(mag_raw - V)
@@ -175,7 +186,6 @@ for i = M:length(data)
         if sensor_count > 0
             % sensor fusion
             dt = 1/SampleRate;
-            Gyro = mean(gyro_array);
             Acc = mean(acc_array);
             Mag = mean(mag_array);
             
@@ -187,8 +197,8 @@ for i = M:length(data)
             q_6D = q_norm(q_6D);
             % low pass filter for quaternion
             % set low pass filter constant with maximum value 1.0 (all pass) decreasing to 0.0 (increasing low pass)
-            lpf_time = 1;   % time constant (second)
-            flpf = dt*sensor_count/lpf_time;
+            lpf_time = 5;   % time constant (second)
+            flpf = dt/lpf_time;
             deltaq = qconjgAxB(qlpf_6D, q_6D);
             if deltaq(1) < 0
                 deltaq = -deltaq;
@@ -203,29 +213,8 @@ for i = M:length(data)
             [sensor_heading_6D(gnss_count), ~, ~] = dcm2euler(Cbn_6D);
             
            %% gyro + acc + mag heading estimation 
-            % strapdown mechanization
-            Cbn = q2dcm(q);
-            Cnb = Cbn';
-
-            Wepp = zeros(3, 1); % no latitude information in computing latitude and longitude rate
-            Wiep = zeros(3, 1); % no latitude information in computing earth rate in the navigation frame
-            Wipp = Wiep + Wepp;
-            Wipb = Cnb * Wipp;
-            Wpbb = Gyro' - gyro_bias - Wipb;
-
-            dq = zeros(4, 1);
-            dq(1) = -(Wpbb(1)*q(2) + Wpbb(2)*q(3) + Wpbb(3)*q(4))/2;
-            dq(2) = (Wpbb(1)*q(1) + Wpbb(3)*q(3) - Wpbb(2)*q(4))/2;
-            dq(3) = (Wpbb(2)*q(1) - Wpbb(3)*q(2) + Wpbb(1)*q(4))/2;
-            dq(4) = (Wpbb(3)*q(1) + Wpbb(2)*q(2) - Wpbb(1)*q(3))/2;
-
-            q = q + dq*dt*sensor_count;
-            q = q_norm(q);
-
-            [yaw, pitch, roll] = dcm2euler(Cbn);   % pure gyro estimation
-            sensor_heading_9D(gnss_count) = yaw;
-            
-             % kalman sensor fusion
+            if 1
+            % kalman sensor fusion
             Cbn = q2dcm(q);
 
             Fg = diag([-1/Corr_time_gyro, -1/Corr_time_gyro, -1/Corr_time_gyro]);
@@ -275,9 +264,9 @@ for i = M:length(data)
             H(3, 9) = Cbn(3, 3);
 
             R = eye(MeasNumG, MeasNumG);
-            R(1, 1) = 5^2;
-            R(2, 2) = 5^2;
-            R(3, 3) = 5^2;
+            R(1, 1) = 2^2;
+            R(2, 2) = 2^2;
+            R(3, 3) = 2^2;
 
             acc_liner_b = zeros(3, 1);
             g_estimate = Cbn*(acc_bias - Acc' + acc_liner_b);
@@ -288,9 +277,6 @@ for i = M:length(data)
 
             [deltaCbn] = euler2dcm (x(3), x(2), x(1)); % (I+P)Cbn
             Cbn = deltaCbn*Cbn;
-            [yaw, pitch, roll] = dcm2euler(Cbn);   % gyro + acc estimation
-            q = euler2q(yaw, pitch, roll);
-            q = q_norm(q);
             
             % update from mag
             H = zeros(3, StateNum);
@@ -309,9 +295,9 @@ for i = M:length(data)
             H(3, 12) = -Cbn(3, 3);
 
             R = eye(3, 3);
-            R(1, 1) = 5^2;
-            R(2, 2) = 5^2;
-            R(3, 3) = 5^2;
+            R(1, 1) = 1^2;
+            R(2, 2) = 1^2;
+            R(3, 3) = 1^2;
 
             mag_estimate = Cbn*Mag';
             Z = Mag_vector - mag_estimate;
@@ -344,9 +330,9 @@ for i = M:length(data)
                     cosdelta = COSDELTAMAX;
                 end
                 geo_inclination = asin(sindelta);
-                % low pass filter for quaternion
+                % low pass filter
                 if 1
-                    lpf_time = 1;   % time constant (second)
+                    lpf_time = 2;   % time constant (second)
                     flpf = dt*sensor_count/lpf_time;
                     mag_inclination_lpf = mag_inclination_lpf + flpf * (geo_inclination - mag_inclination_lpf);
                     geo_inclination = mag_inclination_lpf;
@@ -368,25 +354,6 @@ for i = M:length(data)
             acc_bias = acc_bias + x(7:9);
             gyro_bias = gyro_bias + x(4:6);
             x(1:StateNum) = 0;
-            
-            % low pass filter for quaternion
-            % set low pass filter constant with maximum value 1.0 (all pass) decreasing to 0.0 (increasing low pass)
-            if 1
-            lpf_time = 10;   % time constant (second)
-            flpf = dt*sensor_count/lpf_time;
-            deltaq = qconjgAxB(qlpf, q);
-            if deltaq(1) < 0
-                deltaq = -deltaq;
-            end
-            ftemp = flpf + (1-flpf)*(1-deltaq(1));
-            deltaq = ftemp*deltaq;
-            deltaq(1) = sqrt(1 - norm(deltaq(2:4))^2);
-            qlpf = qAxB(qlpf, deltaq);
-            qlpf = q_norm(qlpf);
-            q = qlpf;
-            % convert to euler
-            Cbn = q2dcm(q);
-            [yaw, pitch, roll] = dcm2euler(Cbn);
             end
             
             % restore the heading result
@@ -414,6 +381,26 @@ for i = M:length(data)
         mag_array(sensor_count, :) = Mag;
         acc_array(sensor_count, :) = Acc;
         gyro_array(sensor_count, :) = Gyro;
+        % strapdown mechanization
+        Cbn = q2dcm(q);
+        Cnb = Cbn';
+
+        Wepp = zeros(3, 1); % no latitude information in computing latitude and longitude rate
+        Wiep = zeros(3, 1); % no latitude information in computing earth rate in the navigation frame
+        Wipp = Wiep + Wepp;
+        Wipb = Cnb * Wipp;
+        Wpbb = Gyro' - gyro_bias - Wipb;
+
+        dq = zeros(4, 1);
+        dq(1) = -(Wpbb(1)*q(2) + Wpbb(2)*q(3) + Wpbb(3)*q(4))/2;
+        dq(2) = (Wpbb(1)*q(1) + Wpbb(3)*q(3) - Wpbb(2)*q(4))/2;
+        dq(3) = (Wpbb(2)*q(1) - Wpbb(3)*q(2) + Wpbb(1)*q(4))/2;
+        dq(4) = (Wpbb(3)*q(1) + Wpbb(2)*q(2) - Wpbb(1)*q(3))/2;
+        dt = 1/SampleRate;
+        q = q + dq*dt;
+        q = q_norm(q);
+        Cbn = q2dcm(q);
+        [yaw, pitch, roll] = dcm2euler(Cbn); % pure gyro estimation
     end
 end
 
