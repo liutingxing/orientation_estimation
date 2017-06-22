@@ -140,7 +140,7 @@ Corr_time_acc = 1;
 Corr_time_mag = 10;
 sigma_Win = 1.0e-6;
 sigma_gyro_1 = (2*pi/180/3600)^2;   % Markov process
-sigma_gyro_2 = (1*pi/180/3600)^2;   % Random walk
+sigma_gyro_2 = (10*pi/180/3600)^2;   % Random walk
 sigma_acc = ((5.0e-2)*Ge)^2;  % Markov process
 sigma_mag = 0.1*0.1;  % Markov process
 
@@ -167,6 +167,9 @@ P(12, 12) = error_mag_jamming^2;
 %% main loop start
 gnss_count = 1;
 sensor_count = 0;
+gyro_smooth_count = 1;
+gyro_smooth_number = 10;
+gyro_smooth_array = zeros(gyro_smooth_number, 3);
 
 for i = M:length(data)
     type = data(i, 1);
@@ -400,7 +403,24 @@ for i = M:length(data)
         Mag = Cali_W_inv*(Mag - Cali_V)';
         mag_array(sensor_count, :) = Mag;
         acc_array(sensor_count, :) = Acc;
-        gyro_array(sensor_count, :) = Gyro;
+        % smooth gyro data
+        if gyro_smooth_count > gyro_smooth_number
+            for i = 1 : gyro_smooth_number - 1
+                gyro_smooth_array(i, :) = gyro_smooth_array(i+1, :);
+            end
+            gyro_smooth_array(gyro_smooth_number, :) = Gyro; 
+        else
+            gyro_smooth_array(gyro_smooth_count, :) = Gyro;
+        end
+        
+        if gyro_smooth_count > gyro_smooth_number
+            Gyro(1:3) = mean(gyro_smooth_array);
+        else
+            Gyro(1) = mean(gyro_smooth_array(1:gyro_smooth_count, 1));
+            Gyro(2) = mean(gyro_smooth_array(1:gyro_smooth_count, 2));
+            Gyro(3) = mean(gyro_smooth_array(1:gyro_smooth_count, 3));
+        end
+        gyro_smooth_count = gyro_smooth_count + 1;
         % strapdown mechanization
         Cbn = q2dcm(q);
         Cnb = Cbn';
@@ -410,6 +430,12 @@ for i = M:length(data)
         Wipp = Wiep + Wepp;
         Wipb = Cnb * Wipp;
         Wpbb = Gyro' - gyro_bias - Wipb;
+        
+        for i = 1:3
+            if abs(Wpbb(i)) < 30 / 180 * pi
+                Wpbb(i) = 0;
+            end
+        end
 
         dq = zeros(4, 1);
         dq(1) = -(Wpbb(1)*q(2) + Wpbb(2)*q(3) + Wpbb(3)*q(4))/2;
