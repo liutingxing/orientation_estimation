@@ -405,8 +405,8 @@ for i = M:length(data)
         acc_array(sensor_count, :) = Acc;
         % smooth gyro data
         if gyro_smooth_count > gyro_smooth_number
-            for i = 1 : gyro_smooth_number - 1
-                gyro_smooth_array(i, :) = gyro_smooth_array(i+1, :);
+            for j = 1 : gyro_smooth_number - 1
+                gyro_smooth_array(j, :) = gyro_smooth_array(j+1, :);
             end
             gyro_smooth_array(gyro_smooth_number, :) = Gyro; 
         else
@@ -431,9 +431,9 @@ for i = M:length(data)
         Wipb = Cnb * Wipp;
         Wpbb = Gyro' - gyro_bias - Wipb;
         
-        for i = 1:3
-            if abs(Wpbb(i)) < 30 / 180 * pi
-                Wpbb(i) = 0;
+        for j = 1:3
+            if abs(Wpbb(j)) < 30 / 180 * pi
+                Wpbb(j) = 0;
             end
         end
 
