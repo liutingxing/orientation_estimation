@@ -170,6 +170,9 @@ sensor_count = 0;
 gyro_smooth_count = 1;
 gyro_smooth_number = 10;
 gyro_smooth_array = zeros(gyro_smooth_number, 3);
+heading_smooth_count = 1;
+heading_smooth_number = 5;
+heading_smooth_array = zeros(heading_smooth_number, 1);
 
 for i = M:length(data)
     type = data(i, 1);
@@ -379,6 +382,37 @@ for i = M:length(data)
             q = qlpf;
             end
             
+            % heading smooth
+            if heading_smooth_count > heading_smooth_number
+                for j = 1 : heading_smooth_number - 1
+                    heading_smooth_array(j) = heading_smooth_array(j+1);
+                end
+                heading_smooth_array(heading_smooth_number) = yaw; 
+            else
+                heading_smooth_array(heading_smooth_count) = yaw;
+            end
+            slot_number = min(heading_smooth_count, heading_smooth_number);
+            temp_array = zeros(slot_number, 1);
+            % check discontinuous
+            temp_array(1) = heading_smooth_array(1);
+            for j = 2:slot_number
+                temp_array(j) = heading_smooth_array(j);
+                if temp_array(j) - temp_array(j-1) > 180/180*pi
+                    temp_array(j) = temp_array(j) - 2*pi;
+                end
+                if temp_array(j) - temp_array(j-1) < -180/180*pi
+                    temp_array(j) = temp_array(j) + 2*pi;
+                end
+            end
+            yaw = mean(temp_array(1:slot_number));
+            if yaw > pi
+                yaw = yaw - 2*pi;
+            end
+            if yaw < -pi
+                yaw = yaw + 2*pi;
+            end
+            heading_smooth_count = heading_smooth_count + 1;
+            
             % restore the heading result
             sensor_heading_9D(gnss_count) = yaw;
         else
@@ -412,14 +446,10 @@ for i = M:length(data)
         else
             gyro_smooth_array(gyro_smooth_count, :) = Gyro;
         end
-        
-        if gyro_smooth_count > gyro_smooth_number
-            Gyro(1:3) = mean(gyro_smooth_array);
-        else
-            Gyro(1) = mean(gyro_smooth_array(1:gyro_smooth_count, 1));
-            Gyro(2) = mean(gyro_smooth_array(1:gyro_smooth_count, 2));
-            Gyro(3) = mean(gyro_smooth_array(1:gyro_smooth_count, 3));
-        end
+        slot_number = min(gyro_smooth_count, gyro_smooth_number);
+        Gyro(1) = mean(gyro_smooth_array(1:slot_number, 1));
+        Gyro(2) = mean(gyro_smooth_array(1:slot_number, 2));
+        Gyro(3) = mean(gyro_smooth_array(1:slot_number, 3));
         gyro_smooth_count = gyro_smooth_count + 1;
         % strapdown mechanization
         Cbn = q2dcm(q);
